@@ -18,9 +18,10 @@ class Configuration:
 
     def read(self) -> Dict[str, Union[int, str]]:
         if not self.data:
-            with self.cfg_path.open("r") as fd:
-                data = yaml.safe_load(fd)
-            self.data = data
+            if self.cfg_path.exists():
+                with self.cfg_path.open("r") as fd:
+                    data = yaml.safe_load(fd)
+                self.data = data
         return self.data
 
     def write(self, data: Dict[str, Union[int, str]]):
