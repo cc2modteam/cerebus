@@ -1,10 +1,12 @@
 """Simulate the CC2 lua API and runtime"""
 import time
 import pygame
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from pathlib import Path
 import lupa.lua53 as lupa
 from ..localconfig import CFG
+from .vehicles import Vehicle
+from .altas_icons import get_icon_name, get_icon, get_icon_number
 
 
 LIBRARY_ORDER = [
@@ -71,10 +73,10 @@ def get_file(fslist: List[FileSystem], path: str) -> Optional[Path]:
 
 class Color8:
     def __init__(self, r, g, b, a=255):
-        self._r = r % 255
-        self._g = g % 255
-        self._b = b % 255
-        self._a = a % 255
+        self._r = r % 256
+        self._g = g % 256
+        self._b = b % 256
+        self._a = a % 256
 
     def to_color(self) -> pygame.Color:
         return pygame.Color(self._r, self._g, self._b, a=self._a)
@@ -108,6 +110,11 @@ class Simulator:
         self.last_tick = 0
         self.w = 128
         self.h = 128
+        self.screen_vehicle: Vehicle = Vehicle(1)
+        self.vehicles = {}
+        self.vehicles[self.screen_vehicle.get_id()] = self.screen_vehicle
+        self.icons = {}
+        self.offset_stack = []
 
     def load(self, mods: List[Path]):
         self.mods = get_filesystems(mods)
@@ -125,21 +132,71 @@ class Simulator:
     def update_ui_push_alpha(self, alpha):
         self.alpha_stack.insert(0, alpha)
 
+    def update_ui_push_offset(self, x, y):
+        self.offset_stack.insert(0, (x, y))
+
+    def update_ui_pop_offset(self):
+        self.offset_stack.pop(0)
+
+
+    def _noop_func(self, *args, **kwargs):
+        pass
+
+    def get_offset_xy(self, x, y) -> Tuple[int, int]:
+        if self.offset_stack:
+            return x + self.offset_stack[0][0], y + self.offset_stack[0][1]
+        return x, y
+
     def update_ui_get_text_size(self, text, cols, lines):
         return min(cols, 24) * 10, lines * 8
+
+    def update_self_destruct_override(self, screen_w, screen_h):
+        return False
+
+    def update_get_screen_vehicle(self) -> Vehicle:
+        return self.screen_vehicle
+
+    def update_get_vehicle_by_id(self, vid) -> Optional[Vehicle]:
+        return self.vehicles.get(vid, None)
+
+    def get_loaded_image(self, icon_name):
+        if icon_name not in self.icons:
+            icon_file = get_icon(CFG.mod_dev_kit, icon_name)
+            loaded_img = pygame.image.load(icon_file)
+            self.icons[icon_name] = loaded_img
+        return self.icons[icon_name]
+
+    def update_ui_image(self, x: int, y: int, img: int, col: Color8, unused):
+        # 0, 0, atlas_icons.screen_compass_background, color_white, 0)
+        x, y = self.get_offset_xy(x, y)
+        icon_name = get_icon_name(img)
+        icon = self.get_loaded_image(icon_name)
+        self.surface.blit(icon, (x, y))
+
 
     def update_ui_text(self, x, y, text, w, h, color, rot):
         if isinstance(text, int):
             text = self.update_get_loc(text)
         col = color.to_color()
+        x, y = self.get_offset_xy(x, y)
         surf = self.fonts[0].render(text, False, col)
-        self.surface.blit(surf, (x, y))
+        rotated = pygame.transform.rotate(surf, -90 * rot)
+        new_rect = rotated.get_rect(center=surf.get_rect(center=(x, y)).center)
+        self.surface.blit(rotated, new_rect)
 
     def update_ui_rectangle(self, x, y, w, h, col):
-        pass
+        x, y = self.get_offset_xy(x, y)
+        color = col.to_color()
+        pygame.draw.rect(self.surface, color,
+                         pygame.Rect(w, y, w, h))
+
+    def begin_get_ui_region_index(self, name):
+        return get_icon_number(name)
 
     def update_ui_rectangle_outline(self, x, y, w, h, col):
-        pass
+        x, y = self.get_offset_xy(x, y)
+        pygame.draw.rect(self.surface, col.to_color(),
+                         pygame.Rect(w, y, w, h), 1)
 
     def read_locale(self):
         loc_db = get_file(self.mods, "localization.csv")
@@ -160,6 +217,14 @@ class Simulator:
         if not self.locale:
             self.read_locale()
         return self.locale.get(message_num, {}).get("text", "")
+
+    def update_get_active_input_type(self):
+        # keyboard = 0
+        # gamepad = 1
+        return 0
+
+    def update_get_screen_input(self, device):
+        return False
 
     def update_ui_set_text_color(self, number, color):
         self.text_color[number] = color
@@ -182,7 +247,9 @@ class Simulator:
         self.fonts[0] = pygame.font.SysFont("couriernew", 8)
 
         ticker = pygame.time.Clock()
-        self.surface = pygame.display.set_mode((self.w, self.h), pygame.SWSURFACE | pygame.DOUBLEBUF)
+        self.surface = pygame.display.set_mode((self.w, self.h),
+                                               pygame.SWSURFACE | pygame.DOUBLEBUF | pygame.SCALED | pygame.RESIZABLE)
+
         screen_script = get_file(self.mods, screen)
 
         # now get the library files
@@ -203,6 +270,20 @@ class Simulator:
         globals.update_ui_text = self.update_ui_text
         globals.update_ui_rectangle = self.update_ui_rectangle
         globals.update_ui_rectangle_outline = self.update_ui_rectangle_outline
+        globals.update_self_destruct_override = self.update_self_destruct_override
+        globals.update_get_screen_vehicle = self.update_get_screen_vehicle
+        globals.update_get_vehicle_by_id = self.update_get_vehicle_by_id
+        globals.update_ui_image = self.update_ui_image
+        globals.begin_get_ui_region_index = self.begin_get_ui_region_index
+        globals.update_get_loc = self.update_get_loc
+        globals.update_get_active_input_type = self.update_get_active_input_type
+        globals.update_ui_push_offset = self.update_ui_push_offset
+        globals.update_ui_pop_offset = self.update_ui_pop_offset
+        globals.update_get_screen_input = self.update_get_screen_input
+
+        # noops
+        globals.update_ui_push_clip = self._noop_func
+        globals.update_ui_pop_clip = self._noop_func
 
         for lua_file in files:
             lua.execute(lua_file.read_text(), name=str(lua_file.name))
