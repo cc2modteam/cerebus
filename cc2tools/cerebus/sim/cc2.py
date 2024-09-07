@@ -38,7 +38,7 @@ class FileSystem:
         for item in files:
             if item.is_file():
                 suffix = item.suffix.lower()
-                if suffix in [".lua", ".csv"]:
+                if suffix in [".lua", ".csv", ".ttf"]:
                     self.files.append(item.relative_to(self.root))
 
     def __str__(self):
@@ -63,7 +63,6 @@ def get_filesystems(mods: List[Path]) -> List[FileSystem]:
 
 
 def get_file(fslist: List[FileSystem], path: str) -> Optional[Path]:
-    path_item = Path(path)
     for item in fslist:
         for fileitem in item.files:
             if fileitem.name.lower() == path.lower():
@@ -104,6 +103,8 @@ class Simulator:
         self.text_color = {}
         self.locale = {}
         self.fonts = {}
+        self.font_x_offset = -1
+        self.font_y_offset = -1
         self.visible = True
         self.screen_script = None
         self.logic_tick = 0
@@ -138,13 +139,14 @@ class Simulator:
     def update_ui_pop_offset(self):
         self.offset_stack.pop(0)
 
-
     def _noop_func(self, *args, **kwargs):
         pass
 
     def get_offset_xy(self, x, y) -> Tuple[int, int]:
         if self.offset_stack:
-            return x + self.offset_stack[0][0], y + self.offset_stack[0][1]
+            for offsets in self.offset_stack:
+                x = offsets[0] + x
+                y = offsets[1] + y
         return x, y
 
     def update_ui_get_text_size(self, text, cols, lines):
@@ -159,7 +161,7 @@ class Simulator:
     def update_get_vehicle_by_id(self, vid) -> Optional[Vehicle]:
         return self.vehicles.get(vid, None)
 
-    def get_loaded_image(self, icon_name):
+    def get_loaded_image(self, icon_name) -> pygame.Surface:
         if icon_name not in self.icons:
             icon_file = get_icon(CFG.mod_dev_kit, icon_name)
             loaded_img = pygame.image.load(icon_file)
@@ -171,24 +173,46 @@ class Simulator:
         x, y = self.get_offset_xy(x, y)
         icon_name = get_icon_name(img)
         icon = self.get_loaded_image(icon_name)
+        color = col.to_color()
+        icon.fill(color, special_flags=pygame.BLEND_RGBA_MIN)
+
         self.surface.blit(icon, (x, y))
 
-
-    def update_ui_text(self, x, y, text, w, h, color, rot):
+    def update_ui_text(self, x, y, text, w, j, color, rot):
         if isinstance(text, int):
             text = self.update_get_loc(text)
         col = color.to_color()
         x, y = self.get_offset_xy(x, y)
+        lpad = 0
+        span = int(w / 8)
+        length = len(text)
+        if j == 1:
+            # center
+            lpad = int((span - length) / 2)
+        if j == 2:
+            # right
+            lpad = int(span - length)
+        lpad = lpad * 4
+        text = f"{' '*lpad}{text}"
         surf = self.fonts[0].render(text, False, col)
-        rotated = pygame.transform.rotate(surf, -90 * rot)
-        new_rect = rotated.get_rect(center=surf.get_rect(center=(x, y)).center)
+
+        if rot > 0:
+            rotated = pygame.transform.rotate(surf, -90 * rot)
+            new_rect = rotated.get_rect(bottomleft=surf.get_rect(topleft=(x + self.font_x_offset, y + self.font_y_offset)).topleft)
+        else:
+            rotated = surf
+            new_rect = rotated.get_rect(topleft=(x + self.font_x_offset, y + self.font_y_offset))
         self.surface.blit(rotated, new_rect)
+
+    def clear(self):
+        pygame.draw.rect(self.surface, (0, 0, 0),
+                         pygame.Rect(0, 0, self.w, self.h))
 
     def update_ui_rectangle(self, x, y, w, h, col):
         x, y = self.get_offset_xy(x, y)
         color = col.to_color()
         pygame.draw.rect(self.surface, color,
-                         pygame.Rect(w, y, w, h))
+                         pygame.Rect(x, y, w, h))
 
     def begin_get_ui_region_index(self, name):
         return get_icon_number(name)
@@ -196,7 +220,7 @@ class Simulator:
     def update_ui_rectangle_outline(self, x, y, w, h, col):
         x, y = self.get_offset_xy(x, y)
         pygame.draw.rect(self.surface, col.to_color(),
-                         pygame.Rect(w, y, w, h), 1)
+                         pygame.Rect(x, y, w, h), 1)
 
     def read_locale(self):
         loc_db = get_file(self.mods, "localization.csv")
@@ -243,8 +267,10 @@ class Simulator:
 
         pygame.init()
         pygame.font.init()
-
-        self.fonts[0] = pygame.font.SysFont("couriernew", 8)
+        lanapixel = get_file(self.mods, "lanapixel.ttf")
+        # font = pygame.font.SysFont("dejavusansmono", 12)
+        font = pygame.font.Font(lanapixel, 10)
+        self.fonts[0] = font
 
         ticker = pygame.time.Clock()
         self.surface = pygame.display.set_mode((self.w, self.h),
@@ -301,10 +327,10 @@ class Simulator:
                     pygame.quit()
                     return
             try:
+                self.clear()
                 self.call_update()
             except lupa.LuaError as err:
                 print(err)
-
             pygame.display.update()
             ticker.tick(fps)
             if self.loading_frames > 0:

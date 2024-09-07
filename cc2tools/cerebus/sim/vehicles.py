@@ -1,3 +1,6 @@
+import time
+import math
+
 class Vehicle:
 
     def __init__(self, vid: int = 0):
@@ -32,5 +35,7 @@ class Vehicle:
         # weapons,
         # crane,
         # radar
+        now = time.monotonic()
+        value = math.sin(now % (360 + 3 * pwr_sys)) * 0.5
 
-        return 1.0, 1.0
+        return value, value
