@@ -21,6 +21,7 @@ SCREENS = [
     "screen_carrier_camera",
     "overlay",
     "screen_power",
+    "screen_propulsion",
     "screen_navigation",
     "screen_radar",
     "screen_vehicle_camera",
@@ -103,7 +104,7 @@ class Simulator:
         self.text_color = {}
         self.locale = {}
         self.fonts = {}
-        self.font_x_offset = -1
+        self.font_x_offset = 1
         self.font_y_offset = -1
         self.visible = True
         self.screen_script = None
@@ -111,14 +112,30 @@ class Simulator:
         self.last_tick = 0
         self.w = 128
         self.h = 128
-        self.screen_vehicle: Vehicle = Vehicle(1)
+        self.screen_vehicle: Vehicle = Vehicle(1, 0)
         self.vehicles = {}
         self.vehicles[self.screen_vehicle.get_id()] = self.screen_vehicle
+        self.screen_team = 1
         self.icons = {}
         self.offset_stack = []
 
+    def update_get_screen_team_id(self):
+        return self.screen_team
+
     def load(self, mods: List[Path]):
         self.mods = get_filesystems(mods)
+
+    def update_get_map_vehicle_count(self) -> int:
+        return len(self.vehicles)
+
+    def update_get_map_vehicle_by_index(self, idx) -> Optional[Vehicle]:
+        vids = sorted(self.vehicles.keys())
+        if idx < len(vids):
+            return self.vehicles[vids[idx]]
+        return None
+
+    def update_get_logic_tick(self):
+        return self.logic_tick
 
     def update_ui_set_back_color(self, col):
         color = col.to_color()
@@ -174,9 +191,24 @@ class Simulator:
         icon_name = get_icon_name(img)
         icon = self.get_loaded_image(icon_name)
         color = col.to_color()
-        icon.fill(color, special_flags=pygame.BLEND_RGBA_MIN)
+        blend = pygame.BLEND_RGBA_MIN
+        if icon_name == "screen_propulsion_carrier":
+            # hack
+            blend = pygame.BLEND_RGB_ADD
+        icon.fill(color, special_flags=blend)
 
         self.surface.blit(icon, (x, y))
+
+    def update_ui_image_rot(self, x: int, y: int, img: int, col: Color8, angle: float):
+        x, y = self.get_offset_xy(x, y)
+        icon_name = get_icon_name(img)
+        icon = self.get_loaded_image(icon_name)
+        color = col.to_color()
+        icon.fill(color, special_flags=pygame.BLEND_RGBA_MIN)
+
+        rotated = pygame.transform.rotate(icon, angle)
+        new_rect = rotated.get_rect(
+            center=icon.get_rect(center=(x + self.font_x_offset, y + self.font_y_offset)).topleft)
 
     def update_ui_text(self, x, y, text, w, j, color, rot):
         if isinstance(text, int):
@@ -198,7 +230,7 @@ class Simulator:
 
         if rot > 0:
             rotated = pygame.transform.rotate(surf, -90 * rot)
-            new_rect = rotated.get_rect(bottomleft=surf.get_rect(topleft=(x + self.font_x_offset, y + self.font_y_offset)).topleft)
+            new_rect = rotated.get_rect(bottomleft=surf.get_rect(topleft=(x + self.font_x_offset - 2, y + self.font_y_offset)).topleft)
         else:
             rotated = surf
             new_rect = rotated.get_rect(topleft=(x + self.font_x_offset, y + self.font_y_offset))
@@ -213,6 +245,11 @@ class Simulator:
         color = col.to_color()
         pygame.draw.rect(self.surface, color,
                          pygame.Rect(x, y, w, h))
+
+    def update_ui_line(self, ax, ay, bx, by, col):
+        ax, ay = self.get_offset_xy(ax, ay)
+        bx, by = self.get_offset_xy(bx, by)
+        pygame.draw.line(self.surface, col.to_color(), (ax, ay), (bx, by), 1)
 
     def begin_get_ui_region_index(self, name):
         return get_icon_number(name)
@@ -254,6 +291,7 @@ class Simulator:
         self.text_color[number] = color
 
     def call_update(self):
+        self.logic_tick = self.logic_tick + 1
         globals = self.lua.globals()
         if "screen_" in self.screen_script:
             delta_ticks = self.logic_tick - self.last_tick
@@ -300,12 +338,18 @@ class Simulator:
         globals.update_get_screen_vehicle = self.update_get_screen_vehicle
         globals.update_get_vehicle_by_id = self.update_get_vehicle_by_id
         globals.update_ui_image = self.update_ui_image
+        globals.update_ui_image_rot = self.update_ui_image_rot
         globals.begin_get_ui_region_index = self.begin_get_ui_region_index
         globals.update_get_loc = self.update_get_loc
         globals.update_get_active_input_type = self.update_get_active_input_type
         globals.update_ui_push_offset = self.update_ui_push_offset
         globals.update_ui_pop_offset = self.update_ui_pop_offset
         globals.update_get_screen_input = self.update_get_screen_input
+        globals.update_get_logic_tick = self.update_get_logic_tick
+        globals.update_ui_line = self.update_ui_line
+        globals.update_get_map_vehicle_count = self.update_get_map_vehicle_count
+        globals.update_get_screen_team_id = self.update_get_screen_team_id
+        globals.update_get_map_vehicle_by_index = self.update_get_map_vehicle_by_index
 
         # noops
         globals.update_ui_push_clip = self._noop_func
