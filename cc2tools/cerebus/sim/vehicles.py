@@ -31,13 +31,13 @@ class Vehicle:
         return 0
 
     def get_rotation_x(self) -> float:
-        return 0.0
+        return variable_generator(10, -0.9, 0.9)
 
     def get_rotation_y(self) -> float:
-        return 0.0
+        return variable_generator(10, -0.9, 0.9)
 
     def get_rotation_z(self) -> float:
-        return 0.0
+        return variable_generator(10, -0.9, 0.9)
 
     def get_power_system_state(self, pwr_sys):
         # pwr_sys =
@@ -70,6 +70,9 @@ class Vehicle:
 
     def get_definition_index(self) -> int:
         return self._vdef
+
+    def get_waypoint_count(self) -> int:
+        return 0
 
 
 class ControlFactors:

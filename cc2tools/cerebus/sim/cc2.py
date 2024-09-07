@@ -354,6 +354,9 @@ class Simulator:
         # noops
         globals.update_ui_push_clip = self._noop_func
         globals.update_ui_pop_clip = self._noop_func
+        globals.update_set_screen_background_type = self._noop_func
+        globals.update_set_screen_camera_pos_orientation = self._noop_func
+        globals.update_set_screen_camera_attach_vehicle = self._noop_func
 
         for lua_file in files:
             lua.execute(lua_file.read_text(), name=str(lua_file.name))
@@ -362,7 +365,7 @@ class Simulator:
 
         try:
             globals.begin()
-        except lupa.LuaError:
+        except (lupa.LuaError, TypeError):
             pass
 
         while True:
