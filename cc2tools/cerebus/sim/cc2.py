@@ -384,5 +384,4 @@ class Simulator:
                 self.loading_frames -= 1
             globals.g_is_loading = self.loading_frames > 0
 
-
         assert True

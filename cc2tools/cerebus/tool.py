@@ -65,9 +65,12 @@ parser_sim.set_defaults(func=start_sim)
 
 def run(args=None):
     opts = parser.parse_args()
-    func = opts.func
-    if func:
-        func(opts)
+    if hasattr(opts, "func"):
+        func = opts.func
+        if func:
+            func(opts)
+    else:
+        parser.print_usage()
 
 
 if __name__ == "__main__":
