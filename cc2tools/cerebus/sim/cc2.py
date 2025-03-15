@@ -1,13 +1,18 @@
 """Simulate the CC2 lua API and runtime"""
 import sys
+import time
+
 import pygame
 from typing import List, Optional, Tuple
 from pathlib import Path
 import lupa.lua53 as lupa
+
+from .inputs import e_input, e_input_action, e_active_input
 from ..localconfig import CFG
-from .vehicles import Vehicle, HudVehicle, ScreenVehicle
+from .vehicles import Vehicle, HudVehicle, ScreenVehicle, StaleVehicle
 from .altas_icons import get_icon_name, get_icon, get_icon_number
 from .common_types import Vec2, Tile, Color8
+from .inventory import update_get_resource_inventory_category_count, update_get_resource_inventory_category_data
 
 LIBRARY_ORDER = [
     "library_enum.lua",
@@ -107,7 +112,6 @@ class Simulator:
         self.mouse_down = False
         self.mouse_down_start = (0, 0)
         self.mouse_pos = (0, 0)
-        self.mouse_move_tick =0
 
     def update_get_screen_team_id(self):
         return self.screen_team
@@ -122,13 +126,13 @@ class Simulator:
         vids = sorted(self.vehicles.keys())
         if idx < len(vids):
             return self.vehicles[vids[idx]]
-        return None
+        return StaleVehicle()
 
     def update_get_map_vehicle_by_id(self, v_id) -> Optional[Vehicle]:
         for v in self.vehicles.values():
             if v.get_id() == v_id:
                 return v
-        return None
+        return StaleVehicle()
 
     def update_get_logic_tick(self):
         return self.logic_tick
@@ -300,14 +304,16 @@ class Simulator:
         if self.is_screen():
             delta_ticks = self.logic_tick - self.last_tick
             lua_globals.update(self.w, self.h, delta_ticks)
+
         self.screen_surface.fill((0,0,0,255))
         self.screen_surface.blit(self.surface, (0, 0))
-        self.logic_tick += 3
+        self.logic_tick += 1
 
     def update_get_tile_count(self):
         return len(self.tiles)
 
     def update_get_tile_by_index(self, idx):
+        assert idx < len(self.tiles)
         return self.tiles[idx]
 
     def update_get_tile_by_id(self, tile_id):
@@ -356,6 +362,7 @@ class Simulator:
             files.append(get_file(self.mods, item))
 
         lua = lupa.LuaRuntime(unpack_returned_tuples=True)
+
         self.lua = lua
         lua_globals = lua.globals()
         lua_globals.color8 = Color8
@@ -425,30 +432,42 @@ class Simulator:
             print(err)
             sys.exit(1)
 
+        last_mouse_pos = (0, 0)
         while True:
+            wheel = 0
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     return
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if not self.mouse_down:
-                        self.mouse_down = True
-                        self.mouse_down_start = pygame.mouse.get_pos()
-                        self.mouse_pos = self.mouse_down_start
+                        btn = pygame.mouse.get_pressed(5)
+                        if btn[0]:
+                            self.mouse_down = True
+                            self.mouse_down_start = pygame.mouse.get_pos()
+                            self.mouse_pos = self.mouse_down_start
+                            lua_globals.input_event(e_input.pointer_1, e_input_action.press)
                 elif event.type == pygame.MOUSEBUTTONUP:
-                    self.mouse_down = False
+                    btn = pygame.mouse.get_pressed(5)
+                    if self.mouse_down and not btn[0]:
+                        self.mouse_down = False
+                        lua_globals.input_event(e_input.pointer_1, e_input_action.release)
                 elif event.type == pygame.MOUSEMOTION:
-                    hover = False
                     mouse = pygame.mouse.get_pos()
-                    now = self.update_get_logic_tick()
-                    if mouse != self.mouse_pos:
-                        self.mouse_pos = mouse
-                        self.mouse_move_tick = now
-                    else:
-                        if now - self.mouse_move_tick > 10:
-                            hover = True
-                    if not self.is_hud():
-                        lua_globals.input_pointer(hover, self.w - mouse[0], self.h - mouse[1])
+                    self.mouse_pos = mouse
+
+                elif event.type == pygame.MOUSEWHEEL:
+                    if event.y != 0:
+                        wheel = event.y
+
+
+            if not self.is_hud():
+                hover = last_mouse_pos == self.mouse_pos
+                lua_globals.input_pointer(hover, self.w - self.mouse_pos[0], self.h - self.mouse_pos[1])
+                last_mouse_pos = self.mouse_pos
+                if wheel:
+                    lua_globals.input_scroll(wheel)
+
             try:
                 self.clear()
                 self.call_update()
@@ -456,7 +475,7 @@ class Simulator:
                 print(err)
                 sys.exit(1)
             pygame.display.update()
-            ticker.tick(fps)
+            time.sleep(ticker.tick(fps) / 1000)
             if self.loading_frames > 0:
                 self.loading_frames -= 1
             lua_globals.g_is_loading = self.loading_frames > 0
@@ -474,12 +493,17 @@ class Simulator:
         self.cam_size = cam_size
 
     def add_screen_funcs(self, lua_globals):
-        lua_globals.update_get_resource_inventory_category_count = self.zero_func
-        lua_globals.update_get_resource_inventory_item_count = self.zero_func
+        lua_globals.update_get_resource_inventory_item_count = lambda: 0   # cargo
+        lua_globals.e_input = e_input
+        lua_globals.e_input_action = e_input_action
+        lua_globals.e_active_input = e_active_input
+        lua_globals.update_get_resource_inventory_category_count = update_get_resource_inventory_category_count
+        lua_globals.update_get_resource_inventory_category_data = update_get_resource_inventory_category_data
         lua_globals.begin_get_screen_name = self.begin_get_screen_name
         lua_globals.update_set_screen_vehicle_control_id = self._noop_func
         lua_globals.update_set_screen_map_position_scale = self.update_set_screen_map_position_scale
         lua_globals.update_set_screen_background_is_render_islands = self._noop_func
+        lua_globals.update_get_is_focus_local = lambda : True
 
     def update_add_ui_interaction(self, text, keystroke):
         if text not in self.interactions:

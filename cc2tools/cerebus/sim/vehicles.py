@@ -163,6 +163,11 @@ class ScreenVehicle(Vehicle):
         return True
 
 
+class StaleVehicle(Vehicle):
+    def get(self):
+        return False
+
+
 class ControlFactors:
     def __init__(self, x, y, w):
         self._x = x

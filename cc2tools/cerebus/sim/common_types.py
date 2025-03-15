@@ -51,7 +51,7 @@ class Tile:
         return f"TILE {self.id}"
 
     def get_facility_category(self):
-        return 0
+        return 0 # 0 = Warehouse
 
 
 class Color8:
