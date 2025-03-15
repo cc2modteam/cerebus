@@ -138,6 +138,9 @@ class ScreenVehicle(Vehicle):
     def get_supporting_vehicle_id(self) -> int:
         return 0
 
+    def get_special_id(self):
+        return 0
+
     def get_direction(self) -> Vec2:
         x = variable_generator(1, -1, 1)
         size = abs(x)
@@ -149,6 +152,15 @@ class ScreenVehicle(Vehicle):
 
     def get_attachment_count(self) -> int:
         return 0
+
+    def get_repair_factor(self):
+        return self.get_damage_indicator_factor()
+
+    def get_is_observation_type_revealed(self):
+        return True
+
+    def get_is_observation_fully_revealed(self):
+        return True
 
 
 class ControlFactors:

@@ -104,6 +104,10 @@ class Simulator:
             Tile(0, 0, 1),
             Tile(9000, 12340, 2),
         ]
+        self.mouse_down = False
+        self.mouse_down_start = (0, 0)
+        self.mouse_pos = (0, 0)
+        self.mouse_move_tick =0
 
     def update_get_screen_team_id(self):
         return self.screen_team
@@ -306,6 +310,12 @@ class Simulator:
     def update_get_tile_by_index(self, idx):
         return self.tiles[idx]
 
+    def update_get_tile_by_id(self, tile_id):
+        for tile in self.tiles:
+            if tile.get_id() == tile_id:
+                return tile
+        return None
+
     def update_get_team_color(self, team_idx) -> Color8:
         if team_idx == 0:
             return Color8(255, 0, 0, 255)
@@ -379,10 +389,13 @@ class Simulator:
 
         lua_globals.update_get_team_color = self.update_get_team_color
         lua_globals.update_get_map_destroyed_vehicle_count = self.zero_func
+        lua_globals.update_get_is_multiplayer = lambda : True
 
         # tiles
         lua_globals.update_get_tile_count = self.update_get_tile_count
         lua_globals.update_get_tile_by_index = self.update_get_tile_by_index
+        lua_globals.update_get_tile_by_id = self.update_get_tile_by_id
+
 
         # noops
         lua_globals.update_ui_push_clip = self._noop_func
@@ -391,6 +404,9 @@ class Simulator:
         lua_globals.update_set_screen_camera_pos_orientation = self._noop_func
         lua_globals.update_set_screen_camera_attach_vehicle = self._noop_func
         lua_globals.update_get_missile_count = self.zero_func
+        lua_globals.update_ui_begin_triangles = self._noop_func
+        lua_globals.update_ui_add_triangle = self._noop_func
+        lua_globals.update_ui_end_triangles = self._noop_func
 
         if self.is_screen():
             self.add_screen_funcs(lua_globals)
@@ -414,6 +430,25 @@ class Simulator:
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     return
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if not self.mouse_down:
+                        self.mouse_down = True
+                        self.mouse_down_start = pygame.mouse.get_pos()
+                        self.mouse_pos = self.mouse_down_start
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    self.mouse_down = False
+                elif event.type == pygame.MOUSEMOTION:
+                    hover = False
+                    mouse = pygame.mouse.get_pos()
+                    now = self.update_get_logic_tick()
+                    if mouse != self.mouse_pos:
+                        self.mouse_pos = mouse
+                        self.mouse_move_tick = now
+                    else:
+                        if now - self.mouse_move_tick > 10:
+                            hover = True
+                    if not self.is_hud():
+                        lua_globals.input_pointer(hover, self.w - mouse[0], self.h - mouse[1])
             try:
                 self.clear()
                 self.call_update()
@@ -425,6 +460,7 @@ class Simulator:
             if self.loading_frames > 0:
                 self.loading_frames -= 1
             lua_globals.g_is_loading = self.loading_frames > 0
+
 
     def zero_func(self) -> int:
         return 0

@@ -50,6 +50,9 @@ class Tile:
     def get_name(self):
         return f"TILE {self.id}"
 
+    def get_facility_category(self):
+        return 0
+
 
 class Color8:
     def __init__(self, r, g, b, a):
