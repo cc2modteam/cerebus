@@ -1,3 +1,5 @@
+import pygame
+
 
 class Vec2:
     def __init__(self, x, y):
@@ -47,3 +49,30 @@ class Tile:
 
     def get_name(self):
         return f"TILE {self.id}"
+
+
+class Color8:
+    def __init__(self, r, g, b, a):
+        if a is None:
+            a = 255
+        self._r = r % 256
+        self._g = g % 256
+        self._b = b % 256
+        self._a = a % 256
+
+    def to_color(self) -> pygame.Color:
+        value = pygame.Color(self._r, self._g, self._b)
+        value.a = self.a()
+        return value
+
+    def r(self):
+        return self._r
+
+    def g(self):
+        return self._g
+
+    def b(self):
+        return self._b
+
+    def a(self):
+        return self._a

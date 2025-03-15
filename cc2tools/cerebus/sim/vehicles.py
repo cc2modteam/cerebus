@@ -125,12 +125,15 @@ class ScreenVehicle(Vehicle):
         return 0
 
     def get_position_xz(self) -> Vec2:
-        x = variable_generator(3, -2000, 2000)
-        z = variable_generator(3, -2000, 2000)
+        x = variable_generator(3, -1000, 14000)
+        z = variable_generator(3, -3000, 16000)
         return Vec2(x, z)
 
     def get_attached_parent_id(self) -> int:
         return self.parent
+
+    def get_attached_vehicle_id(self, bay) -> int:
+        return 0
 
     def get_supporting_vehicle_id(self) -> int:
         return 0

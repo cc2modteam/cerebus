@@ -1,6 +1,5 @@
 """Simulate the CC2 lua API and runtime"""
 import sys
-import time
 import pygame
 from typing import List, Optional, Tuple
 from pathlib import Path
@@ -8,7 +7,7 @@ import lupa.lua53 as lupa
 from ..localconfig import CFG
 from .vehicles import Vehicle, HudVehicle, ScreenVehicle
 from .altas_icons import get_icon_name, get_icon, get_icon_number
-from .common_types import Vec2, Tile
+from .common_types import Vec2, Tile, Color8
 
 LIBRARY_ORDER = [
     "library_enum.lua",
@@ -71,29 +70,6 @@ def get_file(fslist: List[FileSystem], path: str) -> Optional[Path]:
             if fileitem.name.lower() == path.lower():
                 return item.root / fileitem
     return None
-
-
-class Color8:
-    def __init__(self, r, g, b, a=255):
-        self._r = r % 256
-        self._g = g % 256
-        self._b = b % 256
-        self._a = a % 256
-
-    def to_color(self) -> pygame.Color:
-        return pygame.Color(self._r, self._g, self._b, a=self._a)
-
-    def r(self):
-        return self._r
-
-    def g(self):
-        return self._g
-
-    def b(self):
-        return self._b
-
-    def a(self):
-        return self._a
 
 
 class Simulator:
@@ -253,8 +229,9 @@ class Simulator:
         self.surface.blit(rotated, new_rect)
 
     def clear(self):
-        pygame.draw.rect(self.surface, (0, 0, 0),
-                         pygame.Rect(0, 0, self.w, self.h))
+        self.surface.fill((0, 0, 0, 255))
+        #pygame.draw.rect(self.surface, (0, 0, 0, 255),
+        #                 pygame.Rect(0, 0, self.w, self.h))
 
     def update_ui_rectangle(self, x, y, w, h, col):
         x, y = self.get_offset_xy(x, y)
@@ -265,7 +242,8 @@ class Simulator:
     def update_ui_line(self, ax, ay, bx, by, col):
         ax, ay = self.get_offset_xy(ax, ay)
         bx, by = self.get_offset_xy(bx, by)
-        pygame.draw.line(self.surface, col.to_color(), (ax, ay), (bx, by), 1)
+        pcol = col.to_color()
+        pygame.draw.line(self.surface, pcol, (ax, ay), (bx, by), 1)
 
     def begin_get_ui_region_index(self, name):
         return get_icon_number(name)
@@ -318,7 +296,8 @@ class Simulator:
         if self.is_screen():
             delta_ticks = self.logic_tick - self.last_tick
             lua_globals.update(self.w, self.h, delta_ticks)
-
+        self.screen_surface.fill((0,0,0,255))
+        self.screen_surface.blit(self.surface, (0, 0))
         self.logic_tick += 3
 
     def update_get_tile_count(self):
@@ -347,9 +326,9 @@ class Simulator:
         self.fonts[0] = font
 
         ticker = pygame.time.Clock()
-        self.surface = pygame.display.set_mode((self.w, self.h),
-                                               pygame.SWSURFACE | pygame.DOUBLEBUF | pygame.SCALED | pygame.RESIZABLE)
-
+        self.screen_surface = pygame.display.set_mode((self.w, self.h),
+                                               pygame.SWSURFACE | pygame.DOUBLEBUF | pygame.SCALED | pygame.RESIZABLE | pygame.SRCALPHA)
+        self.surface = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
         screen_script = get_file(self.mods, screen)
 
         if self.is_hud():
