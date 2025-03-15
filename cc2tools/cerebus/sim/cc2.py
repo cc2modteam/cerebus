@@ -1,13 +1,14 @@
 """Simulate the CC2 lua API and runtime"""
+import sys
 import time
 import pygame
 from typing import List, Optional, Tuple
 from pathlib import Path
 import lupa.lua53 as lupa
 from ..localconfig import CFG
-from .vehicles import Vehicle
+from .vehicles import Vehicle, HudVehicle, ScreenVehicle
 from .altas_icons import get_icon_name, get_icon, get_icon_number
-
+from .common_types import Vec2, Tile
 
 LIBRARY_ORDER = [
     "library_enum.lua",
@@ -25,6 +26,7 @@ SCREENS = [
     "screen_navigation",
     "screen_radar",
     "screen_vehicle_camera",
+    "screen_vehicle_control",
     "screen_compass",
     "vehicle_hud",
     # TODO add the rest
@@ -108,16 +110,24 @@ class Simulator:
         self.font_y_offset = -1
         self.visible = True
         self.screen_script = None
+        self.screen_name = "screen_name"
         self.logic_tick = 0
         self.last_tick = 0
         self.w = 128
         self.h = 128
-        self.screen_vehicle: Vehicle = Vehicle(1, 0)
+        self.screen_vehicle = None
         self.vehicles = {}
-        self.vehicles[self.screen_vehicle.get_id()] = self.screen_vehicle
         self.screen_team = 1
         self.icons = {}
         self.offset_stack = []
+        self.called_begin = False
+        self.cam_pos = Vec2(0, 0)
+        self.cam_size = 10000
+        self.interactions = {}
+        self.tiles = [
+            Tile(0, 0, 1),
+            Tile(9000, 12340, 2),
+        ]
 
     def update_get_screen_team_id(self):
         return self.screen_team
@@ -132,6 +142,12 @@ class Simulator:
         vids = sorted(self.vehicles.keys())
         if idx < len(vids):
             return self.vehicles[vids[idx]]
+        return None
+
+    def update_get_map_vehicle_by_id(self, v_id) -> Optional[Vehicle]:
+        for v in self.vehicles.values():
+            if v.get_id() == v_id:
+                return v
         return None
 
     def update_get_logic_tick(self):
@@ -290,18 +306,38 @@ class Simulator:
     def update_ui_set_text_color(self, number, color):
         self.text_color[number] = color
 
+    def is_screen(self) -> bool:
+        return "screen_" in self.screen_script
+
+    def is_hud(self) -> bool:
+        return "vehicle_hud" in self.screen_script
+
     def call_update(self):
         self.logic_tick = self.logic_tick + 1
-        globals = self.lua.globals()
-        if "screen_" in self.screen_script:
+        lua_globals = self.lua.globals()
+        if self.is_screen():
             delta_ticks = self.logic_tick - self.last_tick
-            globals.update(self.w, self.h, delta_ticks)
+            lua_globals.update(self.w, self.h, delta_ticks)
 
         self.logic_tick += 3
+
+    def update_get_tile_count(self):
+        return len(self.tiles)
+
+    def update_get_tile_by_index(self, idx):
+        return self.tiles[idx]
+
+    def update_get_team_color(self, team_idx) -> Color8:
+        if team_idx == 0:
+            return Color8(255, 0, 0, 255)
+        return Color8(0 + 16 * team_idx, 0 + 32 * team_idx, 48 + 8 * team_idx, 255)
 
     def run(self, screen: str):
         self.screen_script = screen
         fps = 30
+        if self.is_screen() and "control" in screen:
+            self.w = 256
+            self.h = 256
 
         pygame.init()
         pygame.font.init()
@@ -316,6 +352,15 @@ class Simulator:
 
         screen_script = get_file(self.mods, screen)
 
+        if self.is_hud():
+            self.screen_vehicle = HudVehicle(3, 10) # manta
+        else:
+            self.screen_vehicle: Vehicle = ScreenVehicle(1, 0)  # carrier
+
+        self.vehicles = {
+            self.screen_vehicle.get_id(): self.screen_vehicle
+        }
+
         # now get the library files
         files = []
         for item in LIBRARY_ORDER:
@@ -323,40 +368,55 @@ class Simulator:
 
         lua = lupa.LuaRuntime(unpack_returned_tuples=True)
         self.lua = lua
-        globals = lua.globals()
-        globals.color8 = Color8
-        globals.update_ui_set_back_color = self.update_ui_set_back_color
-        globals.update_set_is_visible = self.update_set_is_visible
-        globals.update_ui_pop_alpha = self.update_ui_pop_alpha
-        globals.update_ui_push_alpha = self.update_ui_push_alpha
-        globals.update_ui_get_text_size = self.update_ui_get_text_size
-        globals.update_ui_set_text_color = self.update_ui_set_text_color
-        globals.update_ui_text = self.update_ui_text
-        globals.update_ui_rectangle = self.update_ui_rectangle
-        globals.update_ui_rectangle_outline = self.update_ui_rectangle_outline
-        globals.update_self_destruct_override = self.update_self_destruct_override
-        globals.update_get_screen_vehicle = self.update_get_screen_vehicle
-        globals.update_get_vehicle_by_id = self.update_get_vehicle_by_id
-        globals.update_ui_image = self.update_ui_image
-        globals.update_ui_image_rot = self.update_ui_image_rot
-        globals.begin_get_ui_region_index = self.begin_get_ui_region_index
-        globals.update_get_loc = self.update_get_loc
-        globals.update_get_active_input_type = self.update_get_active_input_type
-        globals.update_ui_push_offset = self.update_ui_push_offset
-        globals.update_ui_pop_offset = self.update_ui_pop_offset
-        globals.update_get_screen_input = self.update_get_screen_input
-        globals.update_get_logic_tick = self.update_get_logic_tick
-        globals.update_ui_line = self.update_ui_line
-        globals.update_get_map_vehicle_count = self.update_get_map_vehicle_count
-        globals.update_get_screen_team_id = self.update_get_screen_team_id
-        globals.update_get_map_vehicle_by_index = self.update_get_map_vehicle_by_index
+        lua_globals = lua.globals()
+        lua_globals.color8 = Color8
+        lua_globals.vec2 = Vec2
+        lua_globals.update_ui_set_back_color = self.update_ui_set_back_color
+        lua_globals.update_set_is_visible = self.update_set_is_visible
+        lua_globals.update_ui_pop_alpha = self.update_ui_pop_alpha
+        lua_globals.update_ui_push_alpha = self.update_ui_push_alpha
+        lua_globals.update_ui_get_text_size = self.update_ui_get_text_size
+        lua_globals.update_ui_set_text_color = self.update_ui_set_text_color
+        lua_globals.update_ui_text = self.update_ui_text
+        lua_globals.update_ui_rectangle = self.update_ui_rectangle
+        lua_globals.update_ui_rectangle_outline = self.update_ui_rectangle_outline
+        lua_globals.update_self_destruct_override = self.update_self_destruct_override
+        lua_globals.update_get_screen_vehicle = self.update_get_screen_vehicle
+        lua_globals.update_get_vehicle_by_id = self.update_get_vehicle_by_id
+        lua_globals.update_ui_image = self.update_ui_image
+        lua_globals.update_ui_image_rot = self.update_ui_image_rot
+        lua_globals.begin_get_ui_region_index = self.begin_get_ui_region_index
+        lua_globals.update_get_loc = self.update_get_loc
+        lua_globals.update_get_active_input_type = self.update_get_active_input_type
+        lua_globals.update_ui_push_offset = self.update_ui_push_offset
+        lua_globals.update_ui_pop_offset = self.update_ui_pop_offset
+        lua_globals.update_get_screen_input = self.update_get_screen_input
+        lua_globals.update_get_logic_tick = self.update_get_logic_tick
+        lua_globals.update_ui_line = self.update_ui_line
+        lua_globals.update_get_map_vehicle_count = self.update_get_map_vehicle_count
+        lua_globals.update_get_screen_team_id = self.update_get_screen_team_id
+        lua_globals.update_get_map_vehicle_by_index = self.update_get_map_vehicle_by_index
+        lua_globals.update_get_map_vehicle_by_id = self.update_get_map_vehicle_by_id
+
+        lua_globals.update_get_team_color = self.update_get_team_color
+        lua_globals.update_get_map_destroyed_vehicle_count = self.zero_func
+
+        # tiles
+        lua_globals.update_get_tile_count = self.update_get_tile_count
+        lua_globals.update_get_tile_by_index = self.update_get_tile_by_index
 
         # noops
-        globals.update_ui_push_clip = self._noop_func
-        globals.update_ui_pop_clip = self._noop_func
-        globals.update_set_screen_background_type = self._noop_func
-        globals.update_set_screen_camera_pos_orientation = self._noop_func
-        globals.update_set_screen_camera_attach_vehicle = self._noop_func
+        lua_globals.update_ui_push_clip = self._noop_func
+        lua_globals.update_ui_pop_clip = self._noop_func
+        lua_globals.update_set_screen_background_type = self._noop_func
+        lua_globals.update_set_screen_camera_pos_orientation = self._noop_func
+        lua_globals.update_set_screen_camera_attach_vehicle = self._noop_func
+        lua_globals.update_get_missile_count = self.zero_func
+
+        if self.is_screen():
+            self.add_screen_funcs(lua_globals)
+
+        self.add_interaction_funcs(lua_globals)
 
         for lua_file in files:
             lua.execute(lua_file.read_text(), name=str(lua_file.name))
@@ -364,9 +424,11 @@ class Simulator:
         lua.execute(screen_script.read_text(), name=screen_script.name)
 
         try:
-            globals.begin()
-        except (lupa.LuaError, TypeError):
-            pass
+            lua_globals.begin()
+            self.called_begin = True
+        except (lupa.LuaError, TypeError) as err:
+            print(err)
+            sys.exit(1)
 
         while True:
             for event in pygame.event.get():
@@ -378,10 +440,42 @@ class Simulator:
                 self.call_update()
             except lupa.LuaError as err:
                 print(err)
+                sys.exit(1)
             pygame.display.update()
             ticker.tick(fps)
             if self.loading_frames > 0:
                 self.loading_frames -= 1
-            globals.g_is_loading = self.loading_frames > 0
+            lua_globals.g_is_loading = self.loading_frames > 0
 
-        assert True
+    def zero_func(self) -> int:
+        return 0
+
+    def begin_get_screen_name(self):
+        return self.screen_name
+
+    def update_set_screen_map_position_scale(self, cam_x, cam_y, cam_size):
+        self.cam_pos._x = cam_x
+        self.cam_pos._y = cam_y
+        self.cam_size = cam_size
+
+    def add_screen_funcs(self, lua_globals):
+        lua_globals.update_get_resource_inventory_category_count = self.zero_func
+        lua_globals.update_get_resource_inventory_item_count = self.zero_func
+        lua_globals.begin_get_screen_name = self.begin_get_screen_name
+        lua_globals.update_set_screen_vehicle_control_id = self._noop_func
+        lua_globals.update_set_screen_map_position_scale = self.update_set_screen_map_position_scale
+        lua_globals.update_set_screen_background_is_render_islands = self._noop_func
+
+    def update_add_ui_interaction(self, text, keystroke):
+        if text not in self.interactions:
+            self.interactions[text] = keystroke
+            print(f"UI {text} {keystroke}")
+
+    def update_add_ui_interaction_special(self, text, keystroke):
+        if text not in self.interactions:
+            self.interactions[text] = keystroke
+            print(f"UI special {text} {keystroke}")
+
+    def add_interaction_funcs(self, lua_globals):
+        lua_globals.update_add_ui_interaction = self.update_add_ui_interaction
+        lua_globals.update_add_ui_interaction_special = self.update_add_ui_interaction_special

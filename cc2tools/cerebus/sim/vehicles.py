@@ -1,5 +1,6 @@
 import time
 import math
+from .common_types import Vec2
 
 def variable_generator(div, vmin, vmax) -> float:
     v = math.fabs(math.sin(time.monotonic())) / div
@@ -9,10 +10,31 @@ def variable_generator(div, vmin, vmax) -> float:
 
 class Vehicle:
 
+    hud_mode = False
+
     def __init__(self, vid: int = 0, vdef = 0, team = 1):
         self._id = vid
         self._vdef = vdef
         self._team = team
+        self.parent = 0
+        self.hitpoints = 100
+        self.max_hitpoints = 100
+        self.fuel = 420
+        self.max_fuel = 1000
+        self.ammo = 120
+        self.max_ammo = 200
+
+    def get_ammo_factor(self):
+        return self.ammo / self.max_ammo
+
+    def get_fuel_factor(self):
+        return self.fuel / self.max_fuel
+
+    def get_hitpoints(self):
+        return self.hitpoints
+
+    def get_total_hitpoints(self):
+        return self.max_hitpoints
 
     def get_team(self) -> int:
         return self._team
@@ -23,6 +45,27 @@ class Vehicle:
     def get(self) -> bool:
         return True
 
+    def get_definition_index(self) -> int:
+        return self._vdef
+
+    def get_is_observation_revealed(self) -> bool:
+        return True
+
+    def get_is_visible(self) -> bool:
+        return True
+
+    def get_damage_indicator_factor(self) -> float:
+        return self.hitpoints / self.max_hitpoints
+
+    def get_controlling_peer_id(self):
+        return 0
+
+
+class HudVehicle(Vehicle):
+    hud_mode = True
+
+
+class ScreenVehicle(Vehicle):
     def get_self_destruct_mode(self) -> int:
         #     locked = 0,
         #     input = 1,
@@ -38,6 +81,16 @@ class Vehicle:
 
     def get_rotation_z(self) -> float:
         return variable_generator(10, -0.9, 0.9)
+
+    def get_is_visible_by_enemy(self) -> bool:
+        now = int(time.time())  % 40
+        return now > 30
+
+    def get_is_hold_fire(self):
+        return False
+
+    def get_resupply_vehicle_id(self):
+        return 0
 
     def get_power_system_state(self, pwr_sys):
         # pwr_sys =
@@ -68,10 +121,30 @@ class Vehicle:
     def get_carrier_is_engine_on(self) -> bool:
         return time.monotonic() % 200 > 10
 
-    def get_definition_index(self) -> int:
-        return self._vdef
-
     def get_waypoint_count(self) -> int:
+        return 0
+
+    def get_position_xz(self) -> Vec2:
+        x = variable_generator(3, -2000, 2000)
+        z = variable_generator(3, -2000, 2000)
+        return Vec2(x, z)
+
+    def get_attached_parent_id(self) -> int:
+        return self.parent
+
+    def get_supporting_vehicle_id(self) -> int:
+        return 0
+
+    def get_direction(self) -> Vec2:
+        x = variable_generator(1, -1, 1)
+        size = abs(x)
+        z = 1 - size
+        return Vec2(x, z)
+
+    def get_is_docked(self) -> bool:
+        return self.parent != 0
+
+    def get_attachment_count(self) -> int:
         return 0
 
 
