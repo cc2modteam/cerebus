@@ -527,6 +527,7 @@ class Simulator:
         lua_globals.update_set_screen_background_is_render_islands = self._noop_func
         lua_globals.update_get_is_focus_local = lambda : True
         lua_globals.update_get_weapon_line_count = lambda : 0
+        lua_globals.update_get_peer_is_admin = lambda x: False
 
     def update_add_ui_interaction(self, text, keystroke):
         if text not in self.interactions:

@@ -128,6 +128,17 @@ class Waypoint:
         return self.waits.get(grp, False)
 
 
+class Attachment:
+    def __init__(self):
+        self.adef = 0
+
+    def get_definition_index(self):
+        return self.adef
+
+    def get(self):
+        return False
+
+
 class RT:
     def __init__(self):
         self.runtime = None

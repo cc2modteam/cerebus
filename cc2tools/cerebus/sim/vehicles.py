@@ -1,6 +1,7 @@
 import time
 import math
-from .common_types import Vec2, Waypoint, RUNTIME
+from .common_types import Vec2, Waypoint, RUNTIME, Attachment
+
 
 def variable_generator(div, vmin, vmax) -> float:
     v = math.fabs(math.sin(time.monotonic())) / div
@@ -212,6 +213,12 @@ class ScreenVehicle(Vehicle):
 
     def get_attachment_count(self) -> int:
         return 0
+
+    def get_attachment_type(self, idx):
+        return 0
+
+    def get_attachment(self, idx):
+        return Attachment()
 
     def get_repair_factor(self):
         return self.get_damage_indicator_factor()
