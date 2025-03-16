@@ -1,6 +1,6 @@
 import time
 import math
-from .common_types import Vec2
+from .common_types import Vec2, Waypoint, RUNTIME
 
 def variable_generator(div, vmin, vmax) -> float:
     v = math.fabs(math.sin(time.monotonic())) / div
@@ -23,6 +23,10 @@ class Vehicle:
         self.max_fuel = 1000
         self.ammo = 120
         self.max_ammo = 200
+        self._x = 0
+        self._z = 0
+        self._alt = 5
+        self.waypoints = []
 
     def get_ammo_factor(self):
         return self.ammo / self.max_ammo
@@ -122,12 +126,59 @@ class ScreenVehicle(Vehicle):
         return time.monotonic() % 200 > 10
 
     def get_waypoint_count(self) -> int:
-        return 0
+        return len(self.waypoints)
+
+    def get_waypoint_by_id(self, wid):
+        for w in self.waypoints:
+            if w._id == wid:
+                return w
+        return Waypoint(invalid=True)
+
+    def get_waypoint(self, idx):
+        return self.waypoints[idx]
+
+    def add_waypoint(self, x, z):
+        w = Waypoint()
+        w._x = x
+        w._z = z
+        self.waypoints.append(w)
+        return w.get_id()
+
+    def set_waypoint_attack_target_target_id(self, wid, tid):
+        pass
+
+    def set_waypoint_attack_target_attack_type(self, wid, tidx, atype):
+        pass
+
+    def get_attack_target_type(self):
+        return 0 # none
+
+    def clear_waypoints(self):
+        self.waypoints.clear()
+
+    def clear_waypoints_from(self, wid):
+        old = list(self.waypoints)
+        self.clear_waypoints()
+        stop = False
+        for w in old:
+            if w.get_id() != wid:
+                self.waypoints.append(w)
+                stop = True
+            elif stop:
+                self.waypoints.append(w)
+                break
+
+    def get_waypoint_path(self):
+        path = RUNTIME.runtime.table()
+        for w in self.waypoints:
+            path[1 + len(path)] = w.get_position_xz()
+        return path
+
+    def clear_attack_target(self):
+        pass
 
     def get_position_xz(self) -> Vec2:
-        x = variable_generator(3, -1000, 14000)
-        z = variable_generator(3, -3000, 16000)
-        return Vec2(x, z)
+        return Vec2(self._x, self._z)
 
     def get_attached_parent_id(self) -> int:
         return self.parent
@@ -136,6 +187,12 @@ class ScreenVehicle(Vehicle):
         return 0
 
     def get_supporting_vehicle_id(self) -> int:
+        return 0
+
+    def get_dock_queue_vehicle_id(self):
+        return 0
+
+    def get_resupplying_vehicle_id_count(self):
         return 0
 
     def get_special_id(self):
@@ -150,6 +207,9 @@ class ScreenVehicle(Vehicle):
     def get_is_docked(self) -> bool:
         return self.parent != 0
 
+    def get_dock_state(self):
+        return 0 # undocked
+
     def get_attachment_count(self) -> int:
         return 0
 
@@ -160,6 +220,9 @@ class ScreenVehicle(Vehicle):
         return True
 
     def get_is_observation_fully_revealed(self):
+        return True
+
+    def get_is_observation_weapon_revealed(self):
         return True
 
 

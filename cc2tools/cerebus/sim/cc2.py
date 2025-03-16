@@ -11,7 +11,7 @@ from .inputs import e_input, e_input_action, e_active_input
 from ..localconfig import CFG
 from .vehicles import Vehicle, HudVehicle, ScreenVehicle, StaleVehicle
 from .altas_icons import get_icon_name, get_icon, get_icon_number
-from .common_types import Vec2, Tile, Color8
+from .common_types import Vec2, Tile, Color8, RUNTIME, StaleTile
 from .inventory import update_get_resource_inventory_category_count, update_get_resource_inventory_category_data
 
 LIBRARY_ORDER = [
@@ -81,6 +81,7 @@ class Simulator:
     def __init__(self):
         self.mods: List[FileSystem] = []
         self.lua = None
+        self.screen_surface = None
         self.surface = None
         self.loading_frames = 120
         self.alpha_stack = []
@@ -153,6 +154,9 @@ class Simulator:
     def update_ui_push_offset(self, x, y):
         self.offset_stack.insert(0, (x, y))
 
+    def update_ui_get_offset(self):
+        return self.get_offset_xy(0, 0)
+
     def update_ui_pop_offset(self):
         self.offset_stack.pop(0)
 
@@ -210,7 +214,7 @@ class Simulator:
         new_rect = rotated.get_rect(
             center=icon.get_rect(center=(x + self.font_x_offset, y + self.font_y_offset)).topleft)
 
-    def update_ui_text(self, x, y, text, w, j, color, rot):
+    def update_ui_text(self, x, y, text, w, j, color, rot) -> int:
         if isinstance(text, int):
             text = self.update_get_loc(text)
         col = color.to_color()
@@ -235,6 +239,7 @@ class Simulator:
             rotated = surf
             new_rect = rotated.get_rect(topleft=(x + self.font_x_offset, y + self.font_y_offset))
         self.surface.blit(rotated, new_rect)
+        return 8
 
     def clear(self):
         self.surface.fill((0, 0, 0, 255))
@@ -279,7 +284,10 @@ class Simulator:
     def update_get_loc(self, message_num: int) -> str:
         if not self.locale:
             self.read_locale()
-        return self.locale.get(message_num, {}).get("text", "")
+        text = self.locale.get(message_num)
+        if text:
+            return text["text"]
+        return bytes()
 
     def update_get_active_input_type(self):
         # keyboard = 0
@@ -305,8 +313,10 @@ class Simulator:
             delta_ticks = self.logic_tick - self.last_tick
             lua_globals.update(self.w, self.h, delta_ticks)
 
+
         self.screen_surface.fill((0,0,0,255))
         self.screen_surface.blit(self.surface, (0, 0))
+        self.screen_surface.fill((24, 24, 24), special_flags=pygame.BLEND_RGB_ADD)
         self.logic_tick += 1
 
     def update_get_tile_count(self):
@@ -320,7 +330,7 @@ class Simulator:
         for tile in self.tiles:
             if tile.get_id() == tile_id:
                 return tile
-        return None
+        return StaleTile(999, 999, 999)
 
     def update_get_team_color(self, team_idx) -> Color8:
         if team_idx == 0:
@@ -342,6 +352,7 @@ class Simulator:
         self.fonts[0] = font
 
         ticker = pygame.time.Clock()
+
         self.screen_surface = pygame.display.set_mode((self.w, self.h),
                                                pygame.SWSURFACE | pygame.DOUBLEBUF | pygame.SCALED | pygame.RESIZABLE | pygame.SRCALPHA)
         self.surface = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
@@ -351,10 +362,17 @@ class Simulator:
             self.screen_vehicle = HudVehicle(3, 10) # manta
         else:
             self.screen_vehicle: Vehicle = ScreenVehicle(1, 0)  # carrier
+            barge = ScreenVehicle(31, 16)
+            barge._x = -3000
+            barge._z = 450
+            self.vehicles[barge.get_id()] = barge
 
-        self.vehicles = {
-            self.screen_vehicle.get_id(): self.screen_vehicle
-        }
+            fish = ScreenVehicle(19, 77)
+            fish._x = 4000
+            fish._z = 1900
+            self.vehicles[fish.get_id()] = fish
+
+        self.vehicles[self.screen_vehicle.get_id()] = self.screen_vehicle
 
         # now get the library files
         files = []
@@ -362,6 +380,7 @@ class Simulator:
             files.append(get_file(self.mods, item))
 
         lua = lupa.LuaRuntime(unpack_returned_tuples=True)
+        RUNTIME.runtime = lua
 
         self.lua = lua
         lua_globals = lua.globals()
@@ -386,6 +405,7 @@ class Simulator:
         lua_globals.update_get_active_input_type = self.update_get_active_input_type
         lua_globals.update_ui_push_offset = self.update_ui_push_offset
         lua_globals.update_ui_pop_offset = self.update_ui_pop_offset
+        lua_globals.update_ui_get_offset = self.update_ui_get_offset
         lua_globals.update_get_screen_input = self.update_get_screen_input
         lua_globals.update_get_logic_tick = self.update_get_logic_tick
         lua_globals.update_ui_line = self.update_ui_line
@@ -414,7 +434,8 @@ class Simulator:
         lua_globals.update_ui_begin_triangles = self._noop_func
         lua_globals.update_ui_add_triangle = self._noop_func
         lua_globals.update_ui_end_triangles = self._noop_func
-
+        lua_globals.update_get_is_vr = lambda : False
+        lua_globals.update_interaction_ui = self._noop_func
         if self.is_screen():
             self.add_screen_funcs(lua_globals)
 
@@ -463,7 +484,7 @@ class Simulator:
 
             if not self.is_hud():
                 hover = last_mouse_pos == self.mouse_pos
-                lua_globals.input_pointer(hover, self.w - self.mouse_pos[0], self.h - self.mouse_pos[1])
+                lua_globals.input_pointer(hover, self.mouse_pos[0], self.mouse_pos[1])
                 last_mouse_pos = self.mouse_pos
                 if wheel:
                     lua_globals.input_scroll(wheel)
@@ -474,8 +495,9 @@ class Simulator:
             except lupa.LuaError as err:
                 print(err)
                 sys.exit(1)
+
             pygame.display.update()
-            time.sleep(ticker.tick(fps) / 1000)
+            ticker.tick(fps)
             if self.loading_frames > 0:
                 self.loading_frames -= 1
             lua_globals.g_is_loading = self.loading_frames > 0
@@ -504,6 +526,7 @@ class Simulator:
         lua_globals.update_set_screen_map_position_scale = self.update_set_screen_map_position_scale
         lua_globals.update_set_screen_background_is_render_islands = self._noop_func
         lua_globals.update_get_is_focus_local = lambda : True
+        lua_globals.update_get_weapon_line_count = lambda : 0
 
     def update_add_ui_interaction(self, text, keystroke):
         if text not in self.interactions:
