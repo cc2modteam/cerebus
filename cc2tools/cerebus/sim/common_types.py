@@ -19,6 +19,12 @@ class Tile:
         self.z = z
         self.id = tile_id
         self.team = 1
+        self.turret_spawns = [
+            (x + 32, z + 1),
+            (x - 45, z - 64),
+            (x - 120, z + 80),
+            (x + 500, z - 192)
+        ]
 
     def get(self):
         return True
@@ -52,6 +58,21 @@ class Tile:
 
     def get_facility_category(self):
         return 0 # 0 = Warehouse
+
+    def get_turret_spawn_count(self):
+        return len(self.turret_spawns)
+
+    def get_turret_spawn(self, idx):
+        return idx, idx < len(self.turret_spawns)
+
+    def get_marker_position(self, idx):
+        assert idx < len(self.turret_spawns)
+        return Vec2(self.turret_spawns[idx][0], self.turret_spawns[idx][1])
+
+    def get_facility_production_queue_defense_count(self):
+        return 0
+
+
 
 
 class StaleTile(Tile):
@@ -123,7 +144,6 @@ class Waypoint:
     def get_type(self):
         return 0 # move
 
-
     def get_is_wait_group(self, grp):
         return self.waits.get(grp, False)
 
@@ -137,6 +157,19 @@ class Attachment:
 
     def get(self):
         return False
+
+
+class Team:
+    def __init__(self, teamid = 1):
+        self.id = teamid
+        self.currency = 1200
+
+    def get(self):
+        return True
+
+    def get_currency(self):
+        return self.currency
+
 
 
 class RT:

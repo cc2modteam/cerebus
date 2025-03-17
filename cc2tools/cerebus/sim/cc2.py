@@ -11,7 +11,7 @@ from .inputs import e_input, e_input_action, e_active_input
 from ..localconfig import CFG
 from .vehicles import Vehicle, HudVehicle, ScreenVehicle, StaleVehicle
 from .altas_icons import get_icon_name, get_icon, get_icon_number
-from .common_types import Vec2, Tile, Color8, RUNTIME, StaleTile
+from .common_types import Vec2, Tile, Color8, RUNTIME, StaleTile, Team
 from .inventory import update_get_resource_inventory_category_count, update_get_resource_inventory_category_data
 
 LIBRARY_ORDER = [
@@ -110,12 +110,23 @@ class Simulator:
             Tile(0, 0, 1),
             Tile(9000, 12340, 2),
         ]
+        self.teams = [
+            Team(teamid=0),
+            Team(teamid=self.screen_team),
+            Team(teamid=self.screen_team + 1),
+        ]
         self.mouse_down = False
         self.mouse_down_start = (0, 0)
         self.mouse_pos = (0, 0)
 
     def update_get_screen_team_id(self):
         return self.screen_team
+
+    def update_get_team(self, tid):
+        for t in self.teams:
+            if t.id == tid:
+                return t
+        assert False, f"invalid team {tid}"
 
     def load(self, mods: List[Path]):
         self.mods = get_filesystems(mods)
@@ -418,6 +429,8 @@ class Simulator:
         lua_globals.update_get_team_color = self.update_get_team_color
         lua_globals.update_get_map_destroyed_vehicle_count = self.zero_func
         lua_globals.update_get_is_multiplayer = lambda : True
+
+        lua_globals.update_get_team = self.update_get_team
 
         # tiles
         lua_globals.update_get_tile_count = self.update_get_tile_count
