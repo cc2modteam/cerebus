@@ -502,22 +502,25 @@ class Simulator:
                 elif event.type == pygame.KEYUP:
                     keyup = event.key
 
-
-            if not self.is_hud():
-                hover = last_mouse_pos == self.mouse_pos
-                lua_globals.input_pointer(hover, self.mouse_pos[0], self.mouse_pos[1])
-                last_mouse_pos = self.mouse_pos
-                if wheel:
-                    lua_globals.input_scroll(wheel)
-
             try:
-                if keydown and keydown & pygame.K_ESCAPE != 0:
-                    lua_globals.input_event(e_input.back, e_input_action.press)
-                if keyup and keyup & pygame.K_ESCAPE != 0:
-                    lua_globals.input_event(e_input.back, e_input_action.release)
-
                 self.clear()
                 self.call_update()
+
+                if not self.is_hud():
+                    hover = last_mouse_pos == self.mouse_pos
+                    if lua_globals.input_pointer:
+                        lua_globals.input_pointer(hover, self.mouse_pos[0], self.mouse_pos[1])
+                    last_mouse_pos = self.mouse_pos
+                    if wheel:
+                        if lua_globals.input_scroll:
+                            lua_globals.input_scroll(wheel)
+
+                if lua_globals.input_event:
+                    if keydown and keydown & pygame.K_ESCAPE != 0:
+                        lua_globals.input_event(e_input.back, e_input_action.press)
+                    if keyup and keyup & pygame.K_ESCAPE != 0:
+                        lua_globals.input_event(e_input.back, e_input_action.release)
+
             except lupa.LuaError as err:
                 print(err)
                 sys.exit(1)
@@ -527,7 +530,6 @@ class Simulator:
             if self.loading_frames > 0:
                 self.loading_frames -= 1
             lua_globals.g_is_loading = self.loading_frames > 0
-
 
     def zero_func(self) -> int:
         return 0
