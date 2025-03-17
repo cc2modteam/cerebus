@@ -242,6 +242,7 @@ class Simulator:
         return 8
 
     def clear(self):
+        self.offset_stack.clear()
         self.surface.fill((0, 0, 0, 255))
         #pygame.draw.rect(self.surface, (0, 0, 0, 255),
         #                 pygame.Rect(0, 0, self.w, self.h))
@@ -456,6 +457,8 @@ class Simulator:
         last_mouse_pos = (0, 0)
         while True:
             wheel = 0
+            keydown = None
+            keyup = None
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
@@ -481,6 +484,11 @@ class Simulator:
                     if event.y != 0:
                         wheel = event.y
 
+                elif event.type == pygame.KEYDOWN:
+                    keydown = event.key
+                elif event.type == pygame.KEYUP:
+                    keyup = event.key
+
 
             if not self.is_hud():
                 hover = last_mouse_pos == self.mouse_pos
@@ -490,6 +498,11 @@ class Simulator:
                     lua_globals.input_scroll(wheel)
 
             try:
+                if keydown and keydown & pygame.K_ESCAPE != 0:
+                    lua_globals.input_event(e_input.back, e_input_action.press)
+                if keyup and keyup & pygame.K_ESCAPE != 0:
+                    lua_globals.input_event(e_input.back, e_input_action.release)
+
                 self.clear()
                 self.call_update()
             except lupa.LuaError as err:
@@ -528,6 +541,8 @@ class Simulator:
         lua_globals.update_get_is_focus_local = lambda : True
         lua_globals.update_get_weapon_line_count = lambda : 0
         lua_globals.update_get_peer_is_admin = lambda x: False
+        lua_globals.update_set_go_code = lambda x: None
+        lua_globals.update_set_screen_state_exit = lambda : sys.exit(0)
 
     def update_add_ui_interaction(self, text, keystroke):
         if text not in self.interactions:
