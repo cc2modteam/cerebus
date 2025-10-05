@@ -25,6 +25,7 @@ SCREENS = [
     "pause_menu",
     "screen_carrier_camera",
     "overlay",
+    "screen_landing",
     "screen_power",
     "screen_propulsion",
     "screen_navigation",
@@ -87,7 +88,7 @@ class Simulator:
         self.alpha_stack = []
         self.text_color = {}
         self.locale = {}
-        self.fonts = {}
+        self.fonts = []
         self.font_x_offset = 1
         self.font_y_offset = -1
         self.visible = True
@@ -118,6 +119,14 @@ class Simulator:
         self.mouse_down = False
         self.mouse_down_start = (0, 0)
         self.mouse_pos = (0, 0)
+
+    def set_size(self, name):
+        if name == "large_map":
+            self.w = 256
+            self.h = 128
+        elif name == "small_map":
+            self.w = 128
+            self.h = 128
 
     def update_get_screen_team_id(self):
         return self.screen_team
@@ -225,13 +234,20 @@ class Simulator:
         new_rect = rotated.get_rect(
             center=icon.get_rect(center=(x + self.font_x_offset, y + self.font_y_offset)).topleft)
 
-    def update_ui_text(self, x, y, text, w, j, color, rot) -> int:
+    def update_ui_text_scale(self, x, y, text, w, j, color, rot, scale):
+        return self.update_ui_text(x, y, text, w, j, color, rot, scale=scale)
+
+    def update_ui_text(self, x, y, text, w, j, color, rot, scale=1) -> int:
         if isinstance(text, int):
             text = self.update_get_loc(text)
         col = color.to_color()
+        font = self.fonts[scale - 1]
+
         x, y = self.get_offset_xy(x, y)
         lpad = 0
-        span = int(w / 8)
+        charsize = font.size("x")
+
+        span = int(w / charsize[0])
         length = len(text)
         if j == 1:
             # center
@@ -239,9 +255,9 @@ class Simulator:
         if j == 2:
             # right
             lpad = int(span - length)
-        lpad = lpad * 4
+        lpad = lpad * int(charsize[0] / 2)
         text = f"{' '*lpad}{text}"
-        surf = self.fonts[0].render(text, False, col)
+        surf = font.render(text, False, col)
 
         if rot > 0:
             rotated = pygame.transform.rotate(surf, -90 * rot)
@@ -360,8 +376,15 @@ class Simulator:
         pygame.font.init()
         lanapixel = get_file(self.mods, "lanapixel.ttf")
         # font = pygame.font.SysFont("dejavusansmono", 12)
-        font = pygame.font.Font(lanapixel, 10)
-        self.fonts[0] = font
+        self.fonts.clear()
+        self.fonts.append(pygame.font.Font(lanapixel, 10))
+        self.fonts.append(pygame.font.Font(lanapixel, 12))
+        self.fonts.append(pygame.font.Font(lanapixel, 18))
+        self.fonts.append(pygame.font.Font(lanapixel, 36))
+        self.fonts.append(pygame.font.Font(lanapixel, 48))
+        self.fonts.append(pygame.font.Font(lanapixel, 60))
+        self.fonts.append(pygame.font.Font(lanapixel, 72))
+        self.fonts.append(pygame.font.Font(lanapixel, 96))
 
         ticker = pygame.time.Clock()
 
@@ -405,6 +428,7 @@ class Simulator:
         lua_globals.update_ui_get_text_size = self.update_ui_get_text_size
         lua_globals.update_ui_set_text_color = self.update_ui_set_text_color
         lua_globals.update_ui_text = self.update_ui_text
+        lua_globals.update_ui_text_scale = self.update_ui_text_scale
         lua_globals.update_ui_rectangle = self.update_ui_rectangle
         lua_globals.update_ui_rectangle_outline = self.update_ui_rectangle_outline
         lua_globals.update_self_destruct_override = self.update_self_destruct_override

@@ -40,6 +40,10 @@ def new_mod(opts: Namespace):
 
 def start_sim(opts: Namespace):
     sim = cc2.Simulator()
+    if opts.screen_name:
+        sim.screen_name = opts.screen_name
+    if opts.screen_size:
+        sim.set_size(opts.screen_size)
     mods = opts.mod
     if not mods:
         mods = CFG.active_mod_folders()
@@ -60,6 +64,8 @@ parser_new.set_defaults(func=new_mod)
 parser_sim = subs.add_parser("sim")
 parser_sim.add_argument("--mod", type=str, action="append")
 parser_sim.add_argument("SCREEN", choices=cc2.SCREENS)
+parser_sim.add_argument("--screen-name", type=str, default=None)
+parser_sim.add_argument("--screen-size", type=str, default=None)
 parser_sim.set_defaults(func=start_sim)
 
 
